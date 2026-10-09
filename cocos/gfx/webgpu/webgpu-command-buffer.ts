@@ -51,8 +51,7 @@ import { WebGPUBuffer } from './webgpu-buffer';
 import { WebGPUCommandAllocator } from './webgpu-command-allocator';
 import {
     clearRect,
-    WebGPUCmd,
-    WebGPUCmdCopyBufferToTexture,
+    WebGPUCmdFuncCopyBuffersToTexture,
     WebGPUCmdPackage,
     WebGPUCmdUpdateBuffer,
 } from './webgpu-commands';
@@ -606,13 +605,12 @@ export class WebGPUCommandBuffer extends CommandBuffer {
         if (!gpuTexture) {
             return;
         }
-        const cmd = this._webGPUAllocator!.copyBufferToTextureCmdPool.alloc(WebGPUCmdCopyBufferToTexture);
-        cmd.gpuTexture = gpuTexture;
-        cmd.regions = regions;
-        cmd.buffers = buffers;
-
-        this.cmdPackage.copyBufferToTextureCmds.push(cmd);
-        this.cmdPackage.cmds.push(WebGPUCmd.COPY_BUFFER_TO_TEXTURE);
+        // The deferred cmd package this used to feed has no executor on this backend:
+        // render passes submit from endRenderPass and updateBuffer writes the queue
+        // directly, and nothing ever walks cmdPackage.cmds -- the recorded copies were
+        // only ever recycled by the allocator, so the upload silently never happened.
+        // Execute immediately instead, exactly like updateBuffer above.
+        WebGPUCmdFuncCopyBuffersToTexture(WebGPUDeviceManager.instance, buffers, gpuTexture, regions);
     }
 
     public execute (cmdBuffs: CommandBuffer[], count: number): void {
@@ -667,7 +665,14 @@ export class WebGPUCommandBuffer extends CommandBuffer {
         for (let i = 0; i < groupSets.length; i++) {
             const currSetIdx = groupSets[i];
             const currDesc = descriptorSets[currSetIdx];
-            if (currDesc && currDesc.gpuDescriptorSet) {
+            const currLayout = wgpuPipLayout.setLayouts[currSetIdx];
+            // The cached sets survive for the whole session, and a set left here by an earlier
+            // draw may belong to a different pipeline whose layout at this index is not
+            // compatible (per-program instance sets can differ). Reusing such a set fails the
+            // bind group layout check and invalidates the whole command buffer, so only reuse
+            // a cached set created from the same layout object; anything else falls through to
+            // the fresh-set path below, whose unbound slots resolve to default resources anyway.
+            if (currDesc && currDesc.gpuDescriptorSet && currDesc.layout === currLayout) {
                 // prepare() builds the bind group if it was never created, or rebuilds it on resource change.
                 currDesc.prepare();
             } else {

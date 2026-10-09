@@ -752,7 +752,24 @@ export function buildProgramData (
         );
         programSets.set(UpdateFrequency.PER_BATCH, setData);
     }
-    if (fixedLocal) {
+    // A shader declaring nothing per-instance (no local builtins consumed) must not carry the
+    // full fixed local set in its pipeline layout: the per-stage descriptor budgets on WebGPU
+    // (16 samplers / 12 UBOs) are spec-capped, and the unused fixed slots can push a
+    // pass+batch-heavy program over the cap (CreatePipelineLayout refusal). Such programs get
+    // an empty instance set instead — draw paths still bind set 2 as a (now empty) group, so
+    // the four-set layout shape is preserved; makeShaderInfo keeps using the fixed layout for
+    // flattened-binding numbering, so GL lanes are unaffected.
+    const instanceDescriptors = srcShaderInfo.descriptors[UpdateFrequency.PER_INSTANCE];
+    const instanceIsEmpty = instanceDescriptors === undefined || (
+        instanceDescriptors.blocks.length === 0
+        && instanceDescriptors.samplerTextures.length === 0
+        && instanceDescriptors.samplers.length === 0
+        && instanceDescriptors.textures.length === 0
+        && instanceDescriptors.buffers.length === 0
+        && instanceDescriptors.images.length === 0
+        && instanceDescriptors.subpassInputs.length === 0
+    );
+    if (fixedLocal && !instanceIsEmpty) {
         const perInstance = makeLocalDescriptorSetLayoutData(lg, localDescriptorSetLayout);
         const setData = new DescriptorSetData(perInstance);
         initializeDescriptorSetLayoutInfo(

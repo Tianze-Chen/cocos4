@@ -1809,7 +1809,31 @@ export function WebGPUCmdFuncCopyBuffersToTexture (
                             z: l,
                         },
                     };
-                    nativeDevice.queue.writeTexture(copyTarget, srcData, imgDataLayout, [targetWidth, targetHeight, region.texExtent.depth]);
+                    // WebGPU requires bytesPerRow to be a multiple of 256 (it may only be
+                    // omitted for single-row copies). A row-tight upload of a narrow
+                    // texture (e.g. a 21px wide RGBA32F carrier: 21 * 16 = 336) violates
+                    // that, and the write is rejected as a validation error. Repack such
+                    // uploads into a padded staging array and report the padded stride;
+                    // single-row copies drop the stride entirely.
+                    let writeSrc: Uint8Array = srcData;
+                    let writeLayout: GPUImageDataLayout = imgDataLayout;
+                    // imgDataLayout.bytesPerRow is always bufferBytesPerRow here; the
+                    // local keeps this block type-clean (the field is optional).
+                    if (bufferBytesPerRow % 256 !== 0) {
+                        if (targetHeight <= 1) {
+                            writeLayout = { offset: 0 };
+                        } else {
+                            const paddedRow = alignTo(bufferBytesPerRow, 256);
+                            const repacked = new Uint8Array(paddedRow * targetHeight);
+                            for (let row = 0; row < targetHeight; ++row) {
+                                const srcRow = srcData.subarray(row * bufferBytesPerRow, (row + 1) * bufferBytesPerRow);
+                                repacked.set(srcRow, row * paddedRow);
+                            }
+                            writeSrc = repacked;
+                            writeLayout = { offset: 0, bytesPerRow: paddedRow, rowsPerImage: imgDataLayout.rowsPerImage };
+                        }
+                    }
+                    nativeDevice.queue.writeTexture(copyTarget, writeSrc, writeLayout, [targetWidth, targetHeight, region.texExtent.depth]);
                 } else {
                     for (let h = region.texOffset.y; h < region.texExtent.height + region.texOffset.y; h += blockSize.height) {
                         const srcData = new Uint8Array(buffers[i].buffer, buffers[i].byteOffset
