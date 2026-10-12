@@ -273,6 +273,13 @@ export class DynamicAtlasTexture extends Texture2D {
         region.texOffset.y = y;
         region.texExtent.width = image.width;
         region.texExtent.height = image.height;
-        gfxDevice.copyTexImagesToTexture([image.data as HTMLCanvasElement], gfxTexture, [region]);
+        // In-memory image sources hold raw pixel buffers, not platform image objects;
+        // they must take the buffer upload path (the texImage overloads reject typed arrays).
+        const src = image.data;
+        if (ArrayBuffer.isView(src)) {
+            gfxDevice.copyBuffersToTexture([src], gfxTexture, [region]);
+        } else {
+            gfxDevice.copyTexImagesToTexture([src as TexImageSource], gfxTexture, [region]);
+        }
     }
 }

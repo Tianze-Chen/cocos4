@@ -22,6 +22,7 @@
  THE SOFTWARE.
 */
 
+import { DEBUG } from 'internal:constants';
 import { systemInfo } from 'pal/system-info';
 import {
     BufferUsageBit, ColorMask, CullMode, DynamicStateFlagBit, Filter, Format, TextureType, Type, FormatInfo,
@@ -61,6 +62,9 @@ const WebGLWraps: GLenum[] = [
 const _f32v4 = new Float32Array(4);
 const max = Math.max;
 const min = Math.min;
+// Diagnostics for silently skipped descriptor bindings are deduplicated per name:set:binding,
+// so a legitimately optional binding missing across many draws only logs once.
+const reportedMissingBindings = new Set<string>();
 
 function CmpF32NotEuqal (a: number, b: number): boolean {
     const c = a - b;
@@ -2263,7 +2267,13 @@ export function WebGL2CmdFuncBindStates (
             const gpuDescriptor = descriptorIndex >= 0 && gpuDescriptorSet.gpuDescriptors[descriptorIndex];
 
             if (!gpuDescriptor || !gpuDescriptor.gpuBuffer) {
-                // error(`Buffer binding '${glBlock.name}' at set ${glBlock.set} binding ${glBlock.binding} is not bounded`);
+                if (DEBUG) {
+                    const key = `${glBlock.name}:${glBlock.set}:${glBlock.binding}`;
+                    if (!reportedMissingBindings.has(key)) {
+                        reportedMissingBindings.add(key);
+                        error(`[gfx] UBO '${key}' not bound at draw; shader will read zeros`);
+                    }
+                }
                 continue;
             }
 
@@ -2303,7 +2313,13 @@ export function WebGL2CmdFuncBindStates (
                 const glTexUnit = cache.glTexUnits[texUnit];
 
                 if (!gpuDescriptor || !gpuDescriptor.gpuTextureView || !gpuDescriptor.gpuTextureView.gpuTexture || !gpuDescriptor.gpuSampler) {
-                    // error(`Sampler binding '${glSampler.name}' at set ${glSampler.set} binding ${glSampler.binding} index ${l} is not bounded`);
+                    if (DEBUG) {
+                        const key = `${glSampler.name}:${glSampler.set}:${glSampler.binding}:${l}`;
+                        if (!reportedMissingBindings.has(key)) {
+                            reportedMissingBindings.add(key);
+                            error(`[gfx] sampler '${key}' not bound at draw; texture unit keeps stale binding`);
+                        }
+                    }
                     continue;
                 }
 

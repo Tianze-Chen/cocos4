@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { BYTEDANCE } from 'internal:constants';
+import { BYTEDANCE, DEBUG } from 'internal:constants';
 import { systemInfo } from 'pal/system-info';
 import { WebGLEXT } from './webgl-define';
 import { WebGLDevice } from './webgl-device';
@@ -45,6 +45,9 @@ import { OS } from '../../../pal/system-info/enum-type';
 
 const max = Math.max;
 const min = Math.min;
+// Diagnostics for silently skipped descriptor bindings are deduplicated per name:set:binding,
+// so a legitimately optional binding missing across many draws only logs once.
+const reportedMissingBindings = new Set<string>();
 
 export function GFXFormatToWebGLType (format: Format, gl: WebGLRenderingContext): GLenum {
     switch (format) {
@@ -1988,7 +1991,13 @@ export function WebGLCmdFuncBindStates (
             }
 
             if (!vf32) {
-                // error(`Buffer binding '${glBlock.name}' at set ${glBlock.set} binding ${glBlock.binding} is not bounded`);
+                if (DEBUG) {
+                    const key = `${glBlock.name}:${glBlock.set}:${glBlock.binding}`;
+                    if (!reportedMissingBindings.has(key)) {
+                        reportedMissingBindings.add(key);
+                        error(`[gfx] uniform block '${key}' not bound at draw; uniforms keep previous values`);
+                    }
+                }
                 continue;
             }
 
@@ -2161,7 +2170,13 @@ export function WebGLCmdFuncBindStates (
                 const texUnit = glSampler.units[l];
 
                 if (!gpuDescriptor || !gpuDescriptor.gpuSampler) {
-                    // error(`Sampler binding '${glSampler.name}' at set ${glSampler.set} binding ${glSampler.binding} index ${l} is not bounded`);
+                    if (DEBUG) {
+                        const key = `${glSampler.name}:${glSampler.set}:${glSampler.binding}:${l}`;
+                        if (!reportedMissingBindings.has(key)) {
+                            reportedMissingBindings.add(key);
+                            error(`[gfx] sampler '${key}' not bound at draw; texture unit keeps stale binding`);
+                        }
+                    }
                     continue;
                 }
 
