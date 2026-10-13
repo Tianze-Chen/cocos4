@@ -241,7 +241,9 @@ export class StencilManager {
         let depthWrite = false;
         let depthFunc = ComparisonFunc.LESS;
         let cacheMap = this.stencilStateMap;
-        if (mat && mat.passes[0]) {
+        // a material whose effect is still loading has no passes yet; treat it
+        // like the material-less case instead of crashing the first edit-mode tick
+        if (mat && mat.passes && mat.passes[0]) {
             const pass = mat.passes[0];
             const dss = pass.depthStencilState;
             let depthTestValue = 0;

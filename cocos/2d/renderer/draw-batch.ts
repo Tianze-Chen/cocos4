@@ -85,7 +85,13 @@ export class DrawBatch2D {
     public fillPasses (mat: Material | null, dss: DepthStencilState | null, dssHash: number, patches: Readonly<IMacroPatch[] | null>): void {
         if (mat) {
             const passes = mat.passes;
-            if (!passes) { return; }
+            // a material whose effect is still loading has no passes: nothing to fill.
+            // Also drop any passes left over from a previous pool cycle.
+            if (!passes || !passes.length) {
+                this._passes.length = 0;
+                this._shaders.length = 0;
+                return;
+            }
 
             const hashFactor = 0;
             let dirty = false;

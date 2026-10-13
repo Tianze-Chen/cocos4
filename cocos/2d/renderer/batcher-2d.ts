@@ -306,8 +306,11 @@ export class Batcher2D implements IBatcher {
                         for (let j = 0; j < subModels.length; j++) {
                             subModels[j].priority = batchPriority++;
                         }
-                    } else {
+                    } else if (batch.passes.length) {
                         batch.descriptorSet = this._descriptorSetCache.getDescriptorSet(batch);
+                    } else {
+                        // no passes (material still loading): nothing renderable this frame
+                        continue;
                     }
                     scene.addBatch(batch);
                 }
@@ -515,6 +518,12 @@ export class Batcher2D implements IBatcher {
             dssHash = StencilManager.sharedManager!.getStencilHash(renderComp.stencilStage);
         }
 
+        // material still loading (no passes yet): drop the batch — it cannot render,
+        // and an empty-pass batch would crash DescriptorSetCache downstream
+        if (mat && (!mat.passes || !mat.passes.length)) {
+            return;
+        }
+
         const curDrawBatch = this._currStaticRoot ? this._currStaticRoot._requireDrawBatch() : this._drawBatchPool.alloc();
         curDrawBatch.visFlags = renderComp.node.layer;
         curDrawBatch.inputAssembler = ia;
@@ -718,6 +727,12 @@ export class Batcher2D implements IBatcher {
             return;
         }
 
+        // material still loading (no passes yet): drop the batch — it cannot render,
+        // and an empty-pass batch would crash DescriptorSetCache downstream
+        if (!mat.passes || !mat.passes.length) {
+            return;
+        }
+
         let depthStencil: DepthStencilState | null = null;
         let dssHash = 0;
         if (renderComp) {
@@ -752,6 +767,14 @@ export class Batcher2D implements IBatcher {
             depthStencil = StencilManager.sharedManager!.getStencilStage(renderComp.stencilStage);
         }
         dssHash = StencilManager.sharedManager!.getStencilHash(renderComp.stencilStage);
+
+        // material still loading (no passes yet): drop the batch — it cannot render,
+        // and an empty-pass batch would crash DescriptorSetCache downstream
+        if (this._currMaterial && (!this._currMaterial.passes || !this._currMaterial.passes.length)) {
+            this._currIsMiddleware = false;
+            this._middlewareBuffer = null;
+            return;
+        }
 
         const curDrawBatch = this._currStaticRoot ? this._currStaticRoot._requireDrawBatch() : this._drawBatchPool.alloc();
         curDrawBatch.visFlags = renderComp.node.layer;
