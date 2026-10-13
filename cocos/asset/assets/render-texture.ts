@@ -179,14 +179,21 @@ export class RenderTexture extends TextureBase {
         _windowInfo.externalResLow = info && info.externalResLow ? info.externalResLow : 0;
         _windowInfo.externalResHigh = info && info.externalResHigh ? info.externalResHigh : 0;
         _windowInfo.externalFlag = info && info.externalFlag ? info.externalFlag : TextureFlagBit.NONE;
-        _windowInfo.renderPassInfo.colorAttachments.forEach((colorAttachment) => {
-            colorAttachment.format = root.device.swapchainFormat;
-        });
+        if (!info || !info.passInfo) {
+            // only the default pass info is forced to the swapchain format;
+            // explicit pass info defines its own attachment formats (e.g. RGBA16F)
+            _windowInfo.renderPassInfo.colorAttachments.forEach((colorAttachment) => {
+                colorAttachment.format = root.device.swapchainFormat;
+            });
+        }
 
-        _colorAttachment.barrier = deviceManager.gfxDevice.getGeneralBarrier(new GeneralBarrierInfo(
+        const rtSampleBarrier = deviceManager.gfxDevice.getGeneralBarrier(new GeneralBarrierInfo(
             AccessFlagBit.FRAGMENT_SHADER_READ_TEXTURE,
             AccessFlagBit.FRAGMENT_SHADER_READ_TEXTURE,
         ));
+        _windowInfo.renderPassInfo.colorAttachments.forEach((colorAttachment) => {
+            colorAttachment.barrier = rtSampleBarrier;
+        });
 
         if (this._window) {
             this._window.destroy();
