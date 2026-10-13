@@ -102,6 +102,7 @@ export class Profiler extends System {
     private _device: Device | null = null;
     private _swapchain: Swapchain | null = null;
     private _meshRenderer: MeshRenderer = null!;
+    private _profilerMaterial: Material | null = null;
     private _canvas: HTMLCanvasElement | null = null;
     private _ctx: CanvasRenderingContext2D | null = null;
     private _texture: Texture | null = null;
@@ -352,6 +353,18 @@ export class Profiler extends System {
             return;
         }
 
+        // the profiler effect loads asynchronously by name; on a cold start the
+        // material has no passes yet — retry on the next frame instead of crashing
+        if (!this._profilerMaterial) {
+            const pendingMaterial = new Material();
+            pendingMaterial.initialize({ effectName: 'util/profiler' });
+            this._profilerMaterial = pendingMaterial;
+        }
+        if (!this._profilerMaterial.passes.length) {
+            director.once(DirectorEvent.AFTER_UPDATE, this.generateNode, this);
+            return;
+        }
+
         const canvas = this._canvas!;
 
         this._rootNode = new Node('PROFILER_NODE');
@@ -461,8 +474,7 @@ export class Profiler extends System {
             colors: vertexUV, // pack all the necessary info in a_color: { x: u, y: v, z: id.x, w: id.y }
         });
 
-        const _material = new Material();
-        _material.initialize({ effectName: 'util/profiler' });
+        const _material = this._profilerMaterial;
 
         const pass = this.pass = _material.passes[0];
         const hTexture = pass.getBinding('mainTexture');
