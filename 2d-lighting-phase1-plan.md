@@ -207,3 +207,60 @@ demo 里三个灯节点各挂 `PointLight2D`、Canvas 挂 `AmbientLight2D`，`Ph
 - `2d-lighting-research.md` —— 架构选型与分层设计（为什么这么做）
 - `2d-lighting-engine-issues.md` —— Phase 0 发现的引擎问题与 API 陷阱（证据链）
 - 本文 —— 执行计划与状态（做到哪、接下来做什么）
+
+---
+
+## Phase 3 · 法线映射（2026-10-14 完成，前向路径）
+
+**范围**：前向 `sprite-lit.effect` 加 normalMap + 逐灯 N·L（wrap diffuse）；RT 路径法线
+需要"方向编码光照图"（RGB=Σcolor·dir、A=Σ亮度），留待后续。
+
+- `sprite-lit.effect`：`normalMap` 材质属性（sampler）+ `USE_NORMAL_MAP` define；
+  fs 里 `n = normalize(tex.rg*2-1)`，calcLight 里 `diff = clamp(dot(n, toLight/d)*0.5+0.5)`
+  （wrap：背光坡保持一半能量，2D 水面观感）；define 关闭时 diff≡1（不改变无 define 路径）
+- 法线贴图：PIL 程序生成（整数周期波保证可平铺——本次直接 1280×720 整幅 + 配对
+  water-diffuse，波峰亮化与高度场对齐）
+- `NormalDemo.ts`：运行时 `new Material + initialize({defines:{USE_NORMAL_MAP:true}}) +
+  setProperty('normalMap')`（避免手写 .mt）；暖光横扫 + 冷光环绕
+- `normal.scene`：全幅水面 + 双灯 + 序列化 PointLight2D/Light2DGizmo
+- **验证**：headless 停灯于世界原点，过灯心水平亮度剖面去趋势残差 ±13%（7 次符号翻转）
+  = 波纹调制确认；`USE_NORMAL_MAP` define 与 normalMap binding 双确认
+
+## 序列化与 gizmo（2026-10-14）
+
+- **纯 accessor @property 不序列化**（computed，不进 `__values__`）：可序列化数据必须挂
+  `_` 前缀 backing 字段（`@property({visible:false}) private _radius`），accessor 另挂
+  @property 供检查器（引擎自身同款模式，如 cc.Camera `_orthoHeight`）
+- 场景灯光组件已序列化（shadow/spot/normal 三场景），demo 的 ensure* 幂等跳过——编辑器
+  里可见可调，gizmo 才有数据可画
+- **Light2DGizmo**：3.8 无扩展 gizmo 注册 API（`cce/public/gizmos` 为编辑器私有，
+  app.asar 全文无注册入口）→ `executeInEditMode + playOnFocus + Graphics` 路线：
+  点光=半径圈+十字、锥光=楔面+光轴、遮挡体=轮廓描边；画在 `DontSave|HideInHierarchy`
+  子节点（不写场景文件、不与 Sprite 冲突）；预览/构建自灭（EDITOR 判断）
+- 半径圈按世界半径/节点世界缩放绘制（灯半径是世界单位）
+
+## 环境事故记录（2026-10-14，重要）
+
+编辑器重启后 **自定义引擎回退 builtin**（asset-db preload 失败→静默 fallback 并把
+`~/.CocosCreator/profiles/v2/packages/engine.json` 的 builtin 写回 true）：
+
+1. **根因链**：编辑器 3.8.8 的 compile-custom-engine 重编 v4 引擎缓存时，import-map
+   不含 **裸 `pal/*` 别名**（生成 `q-bundled:///fs/pal/x` 键而非 `pal/x` 键；
+   builtin 引擎的官方 CI 构建有裸键）→ asset-db worker 里 SystemJS 解析
+   `q-bundled:///fs/cocos/gfx/webgl2/webgl2-device.js` 的 `pal/system-info` 裸依赖
+   失败（Error#8）→ preload 报错 → 引擎回退 builtin。全清 bin/.cache 重建同样复现。
+   **修法（待办）**：v4 引擎构建侧补齐裸别名，或匹配 editor 的编译器版本。
+2. **builtin 引擎上的连带**（plugin 已适配）：
+   - RenderTexture 显式 passInfo 被 `_initWindow` 覆写回 swapchain 格式（引擎侧修复
+     670d982abb 只在 v4 生效）→ 光照 RT 回退 RGBA8（1.0 截断、灯池中心约 -22%）
+   - packer 对项目脚本输出 **CJS-in-System 坏块**（`exports is not defined`，模块图全崩）
+     → `fix-preview-chunks.mjs`（项目根）重写这些 chunk（deps 解析+xhr require stub+
+     exports harvest），**编辑器每次重启后需重跑**
+   - 2D 动态图集 `DynamicAtlasTexture.drawTexture→texSubImage2D` 在新 Chromium 下
+     Overload resolution failed（builtin 老代码，非致命噪音）
+   - reach 纹理改用 `reset+uploadData`（copyBuffers 路径，避开 ImageAsset-_data 的
+     texSubImage2D TexImageSource 重载陷阱），两种引擎通用
+3. **自定义引擎恢复后**：HDR/位级 parity 应回到 10-13 状态（RGBA16F、e2e 浮点对拍）；
+   builtin 上的 e2e RT 读回返回全零（读到 resize 后被重建的 framebuffer 旧句柄），
+   以屏幕渲染+剖面分析代验。
+

@@ -167,3 +167,30 @@ DEBUG 门控 + 每个 `name:set:binding` 只报一次：既不像无条件 `erro
    `enableEffectImport` 硬编码 `true`（`cocos/rendering/custom/index.ts:49`）。
    调研报告中「legacy 与 custom 两条消费路径都在维护」的表述需要修正为
    「legacy 代码存在但运行时不可达」。
+
+---
+
+## 2026-10-14 · 编辑器 ↔ v4 引擎编译器不匹配（阻塞自定义引擎）
+
+**现象**：编辑器 3.8.8 重启后预览退回 builtin 引擎；`engine.json` profile 的
+`javascript.builtin` 被写回 `true`。日志链：`compile-custom-engine-with-caching-success` →
+`[Assets] preload engine failed!` → 兜底 builtin。
+
+**根因**：编辑器内置的 compile-custom-engine 重编 `bin/.cache` 时生成的
+`import-map.json` 用 `q-bundled:///fs/pal/system-info` 作键，而引擎 bundle 内部模块
+（如 `cocos/gfx/webgl2/webgl2-device.js`）依赖的是**裸 `pal/system-info`**——builtin
+引擎（官方 CI 构建）的 import-map 有裸键别名。asset-db worker 的 SystemJS 因此
+Error#8，preload 失败。`cc.config.json` 的 `moduleOverrides/isVirtualModule` 段两侧
+schema 一致（builtin 指向 .ts、v4 指向 .js，结构相同），差异在编辑器编译器如何
+产出别名——怀疑 v4 引擎的导出图/ccbuild 与 3.8.8 编辑器编译器（app.asar 内
+`builtin/engine/static/engine-compiler`）版本不匹配。
+
+**复现**：全清 `bin/.cache` 后启动编辑器 → 必现。手工给 import-map 补裸 pal 键有效，
+但编辑器每次启动都会重编并覆盖（"compile-custom-engine-with-caching" 每次跑 ~5s）。
+
+**连带**（builtin 引擎上）：见 phase1-plan「环境事故记录」——RenderTexture passInfo
+覆写、packer CJS 坏块（fix-preview-chunks.mjs 临时桥）、动态图集 texSubImage2D
+Overload 失败。
+
+**修复方向**：①v4 引擎仓跟进构建侧（生成裸别名或对齐 ccbuild 版本）②或升级编辑器
+到与 v4 工具链匹配的版本 ③短期：builtin + plugin 适配（已做）。
