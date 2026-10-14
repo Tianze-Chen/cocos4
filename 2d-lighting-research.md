@@ -2,6 +2,9 @@
 
 > 2026-10 · 基于分支 feat/plugin_support 的现状调研 + 业界方案分析
 > 三路并行调研：① 本仓库 2D 渲染管线；② 本仓库光照/后处理设施；③ 业界方案（Unity URP 2D / Godot 4 / Box2DLights）
+>
+> **相关文档**：实施计划与状态见 `2d-lighting-phase1-plan.md`；Phase 0 发现的引擎问题见 `2d-lighting-engine-issues.md`。
+> 注：本文 §5/§6 中「legacy 与 custom 两条消费路径都在维护」的表述已被实测修正——cocos4 运行时为 custom-pipeline-only，legacy 不可达（详见 engine-issues 附录第 3 条）。
 
 ---
 
