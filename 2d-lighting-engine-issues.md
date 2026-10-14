@@ -194,3 +194,12 @@ Overload 失败。
 
 **修复方向**：①v4 引擎仓跟进构建侧（生成裸别名或对齐 ccbuild 版本）②或升级编辑器
 到与 v4 工具链匹配的版本 ③短期：builtin + plugin 适配（已做）。
+
+**2026-10-14 15:45 更新：已恢复，自定义引擎重新可用。** 全清重编（前一日 14:53）+
+保留缓存的状态下，编辑器以 builtin=false 启动后 `compile-custom-engine-with-caching
+(8.2s)` → `Load engine in …/cocos4`，**preload 成功、不再回退**（本 boot 未再出现 pal
+解析错误；根因链条仍如上，疑似与缓存增量状态相关，未完全定性）。保险措施：
+项目根 `fix-engine-pal-aliases.mjs` watcher（启动编辑器前后台常驻，任何 map 再生成
+200ms 内补回裸别名；map 正常时零操作）。恢复后验证全绿：RT RGBA16F + 浮点读回
+（ambient 0.282/0.306 正确）、e2e 独立对拍 **12/10720（0.1%，与 10-13 基线一致）**、
+shadow/spot/normal 三场景参数与渲染正常、引擎仓 package.json 未再被覆写。
