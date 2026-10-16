@@ -253,3 +253,19 @@ q-bundled id 直推、source 裸说明符透传）。补丁确认被加载执行
 import-map 中 pal 虚拟模块别名的生成为何不一致（full 有 / cached 无）？
 ②asset-db worker 的 preload 能否推迟到 buildImportMap 落盘之后（或失败重试）？
 任一修复即可让自定义引擎在 3.8.8 下稳定。项目/插件侧无待办。
+
+**2026-10-16 构建验证的结果：被同一根因阻塞，并新增第三个引擎侧数据点。**
+1. CLI 构建（`--build "platform=web-mobile"`）在 Init bundle 后立刻失败：
+   builder 的 `load-script.ccc` **直接复用 `temp/programming/packer-driver/targets/editor/chunks/`**
+   的 chunk 执行——与 preview 同一批产物，坏块同样炸 builder（`exports is not defined`）。
+2. 排除"增量状态污染"假设：备份删除 temp/programming 后在稳定 builtin 下全量重生成，
+   20 个 chunk 仍是坏的 CJS-in-System 形态。**builtin 引擎路径对此项目确定性产出坏块**
+   （正常 3.8.8 项目不这样——本项目把引擎在 custom/builtin 间反复切换过的历史配置可能
+   影响了 packer 的 transform 配置来源，待查 `temp/programming/packer-driver/VERSION`
+   的 config 归属）。
+3. preview 的 `fix-preview-chunks.mjs` 补丁**不可移植到 builder**（补丁用
+   `/scripting/x/` 绝对 URL 做 deps，builder 的 `pack:///` 体系解析不了）。
+4. **结论**：构建验证与 preview、自定义引擎 preload 共享同一组根因，全部指向
+   quick-compiler/packer 在 custom↔builtin 切换后的行为。引擎侧修好（issues 文档
+   两个问题 + 本条）后，构建验证应随 chunk 恢复正确形态而自然解锁。项目/插件侧
+   无可推进项。
