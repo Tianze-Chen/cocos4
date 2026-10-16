@@ -237,3 +237,19 @@ q-bundled id 直推、source 裸说明符透传）。补丁确认被加载执行
 3. 修复归属：**v4 引擎构建侧**（让 StatsQuery/_setupModuleOverrides 对 EDITOR
    target 输出 pal 虚拟模块覆盖——为什么官方 CI 工具链能产出而 quick-compiler
    不能，需要引擎侧同事判断）或升级编辑器版本。插件/项目侧无待办。
+
+**2026-10-16 补充：用户经验驱动的复测，实证模型（重要修正）。**
+按用户经验执行"删 bin/.cache → 重启触发重编"，连续 3 次启动观察：
+1. **全量重编（删缓存后第 1 次启动，97s）的产物 map 确实带裸 pal 键**（正确形态）——
+   用户经验对应的行为真实存在；我此前"编译器从不产键"的结论是**检查时机过早**
+   （map 在编译末尾落盘，我在 +100s 读到的还是旧值/中间态）。
+2. 但**同一次启动的 asset-db preload 早于 map 落盘运行** → 必然失败并翻转 builtin。
+3. **后续缓存启动（~5s）会把 map 重写成无键形态** → 再次失败。即使启动时 map
+   带键（第 2 次启动实测），preload 依然 Error#8（时序或中间态覆盖）。
+4. 推论：自定义引擎只在"全量重编后的窗口"可用（这解释了 10-14 与 10-16 上午的
+   两次成功 boot）；稳定复用的路径被 cached-build 的 map 重写 + preload 竞态挡死。
+
+**给引擎侧的两个精确问题**：①quick-compiler 的 full build 与 cached build 对
+import-map 中 pal 虚拟模块别名的生成为何不一致（full 有 / cached 无）？
+②asset-db worker 的 preload 能否推迟到 buildImportMap 落盘之后（或失败重试）？
+任一修复即可让自定义引擎在 3.8.8 下稳定。项目/插件侧无待办。
