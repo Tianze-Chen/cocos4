@@ -264,3 +264,37 @@ demo 里三个灯节点各挂 `PointLight2D`、Canvas 挂 `AmbientLight2D`，`Ph
    builtin 上的 e2e RT 读回返回全零（读到 resize 后被重建的 framebuffer 旧句柄），
    以屏幕渲染+剖面分析代验。
 
+
+---
+
+## Phase 2.5 · 桌面性能基线（2026-10-16，Metal / M 系 Mac）
+
+方法：`headless-perf.mjs`（项目根，headless Chrome + `--use-angle=metal`）。
+帧耗时 = AFTER_DRAW 时间戳差（120 帧，vsync 60 封顶）；CPU 阶段耗时 = 包装
+`_syncLightShapes`（四边形同步+reach 填充+上传+uniform）与 `_applyOcclusion`
+（512 向 raycast，为前者子集）的 performance.now 累计。场景：shadow.scene，
+40 地砖 + N 灯 + M 墙（每墙 4 段）。
+
+**帧耗时：全部配置 16.67ms（60fps vsync 封顶），p95 ≤ 18.6ms** —— 含 16 灯
+raycast 阴影 + 8 遮挡体 + 全分辨率 RT，桌面 GPU 无压力（GPU 成本被 vsync 封顶
+掩盖，未超帧即有富余；如需 GPU 余量刻度需关 vsync 或加大像素负载）。
+
+**CPU 阶段成本（每帧，ms）—— 唯一随规模增长的成本是 raycast：**
+
+| 配置 | sync 总计 | 其中 raycast | 备注 |
+|---|---|---|---|
+| 前向 4/8/16L | 0.044 / 0.071 / 0.094 | 0 | 冻结灯表打包，~6µs/灯 |
+| RT 无影 4/8/16L（s1.0→0.25） | 0.031–0.102 | 0 | 与前向同级，RT 分辨率无关 |
+| RT+影 4L/1墙 | 0.129 | 0.091 | |
+| RT+影 8L/1墙 | 0.326 | 0.248 | ≈31µs/灯 |
+| RT+影 16L/1墙 | 0.612 | 0.523 | 线性外推 |
+| RT+影 8L/2墙 / 8墙 | 0.431 / 0.633 | 0.366 / 0.588 | 随段数线性 |
+| RT+影 8L/1墙（s1.0 / 0.25） | 0.318 / 0.331 | 0.259 / 0.263 | **CPU 成本与 RT 分辨率无关** |
+| 锥光 8L/1墙 | 0.336 | 0.247 | 锥光 raycast ≈ 点光 |
+
+**结论**：①raycast ≈ 33µs/灯/4 段，16 灯×8 墙 ≈ 2ms/帧（桌面可忽略，移动端
+预算内）；外推 16 灯×32 墙（128 段）≈ 8ms/帧——届时才需要 reach 缓存/静态灯
+增量化（staticLight 标记已预留）。②RT 分辨率只影响 GPU 侧，桌面全分辨率无感。
+③swiftshader 软渲染地板 ~25ms 会淹没一切差异，基线测量务必用 `--use-angle=metal`。
+
+真机（iOS/Android/低端 Win）由用户按同表跑 `?scene=` + 同脚本对照。
