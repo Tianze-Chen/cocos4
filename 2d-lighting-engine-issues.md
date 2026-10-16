@@ -203,3 +203,26 @@ Overload 失败。
 200ms 内补回裸别名；map 正常时零操作）。恢复后验证全绿：RT RGBA16F + 浮点读回
 （ambient 0.282/0.306 正确）、e2e 独立对拍 **12/10720（0.1%，与 10-13 基线一致）**、
 shadow/spot/normal 三场景参数与渲染正常、引擎仓 package.json 未再被覆写。
+
+**2026-10-16 深挖：quick-compiler buildImportMap 丢弃 pal 虚拟模块别名（根因定位到编辑器代码行）。**
+`app.asar/node_modules/@editor/quick-compiler/dist/index.js` 的 `buildImportMap()`：
+```js
+for (const [k, v] of Object.entries(moduleOverrides)) {
+    const targetUid = encodeFilePath(v, rootDir);      // ① v 是引擎相对路径(pal/x/web/x.js)非绝对路径 → null → continue 丢弃
+    const targetModuleId = bundler.getModuleId?.(targetUid);  // ② 即便解析出 uid，concat bundler 索引不含虚拟模块 → undefined → continue
+    let sourceModuleId = k;
+    const sourceUid = encodeFilePath(k, rootDir);      // ③ 裸说明符 'pal/x' 被当相对路径 → getModuleId('pal/x') → '' → continue
+    if (!sourceModuleId) continue;
+    importMap.imports[sourceModuleId] = targetModuleId;
+}
+```
+builtin 引擎的 map 由官方 CI 的引擎自建工具链产出（不走这段），因此只有 custom engine 命中。
+**已做的外科手术**（未保留，编辑器已恢复原装）：`/tmp/asar-patch.mjs`（单文件替换
+app.asar，per-file SHA256 重算、Electron fuses 的 asar 完整性校验确认为 Disabled）+
+`/tmp/qc/index-patched.js`（三处 fallback：target 相对路径 join rootDir 解析、target
+q-bundled id 直推、source 裸说明符透传）。补丁确认被加载执行（marker log 出现），
+但 map 里裸键仍未出现——推断 `_setupModuleOverrides` 对 EDITOR target 根本没吐出 pal
+覆盖（HTML5 test 门控或 features 过滤），需要引擎侧确认 moduleOverrides 的来源与
+条件。**结论：这是编辑器 3.8.8 quick-compiler 与 v4 引擎 cc.config 虚拟模块体系的不
+兼容，正确的修法在 v4 引擎构建侧（让 StatsQuery/_setupModuleOverrides 输出 pal
+覆盖）或升级编辑器；短期内 builtin + RGBA8 回退可继续开发（RT 法线优雅降级为直通）。**
