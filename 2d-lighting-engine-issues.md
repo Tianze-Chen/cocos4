@@ -226,3 +226,14 @@ q-bundled id 直推、source 裸说明符透传）。补丁确认被加载执行
 条件。**结论：这是编辑器 3.8.8 quick-compiler 与 v4 引擎 cc.config 虚拟模块体系的不
 兼容，正确的修法在 v4 引擎构建侧（让 StatsQuery/_setupModuleOverrides 输出 pal
 覆盖）或升级编辑器；短期内 builtin + RGBA8 回退可继续开发（RT 法线优雅降级为直通）。**
+
+**2026-10-16 最终确认 + 勘误（用户复核触发）。**
+1. **勘误 10-14 的"已恢复"结论**：那次单次成功（preload 通过、自定义引擎加载）是
+   **不可复现的侥幸状态**——此后 5+ 次全清重建与热缓存启动均确定性失败（同一
+   pal Error#8）。把它上报为"已恢复"是错误结论，已致用户预期偏差。
+2. **确定性结论**：编辑器 3.8.8 + v4 引擎，自定义引擎 **100% 无法通过 asset-db
+   preload**（quick-compiler 三处丢弃点，见上节）。builtin 引擎一切正常。
+   当前编辑器安装已验证恢复原装（app.asar 与原版字节一致、无残留文件）。
+3. 修复归属：**v4 引擎构建侧**（让 StatsQuery/_setupModuleOverrides 对 EDITOR
+   target 输出 pal 虚拟模块覆盖——为什么官方 CI 工具链能产出而 quick-compiler
+   不能，需要引擎侧同事判断）或升级编辑器版本。插件/项目侧无待办。
