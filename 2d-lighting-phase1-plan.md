@@ -298,3 +298,28 @@ raycast 阴影 + 8 遮挡体 + 全分辨率 RT，桌面 GPU 无压力（GPU 成�
 ③swiftshader 软渲染地板 ~25ms 会淹没一切差异，基线测量务必用 `--use-angle=metal`。
 
 真机（iOS/Android/低端 Win）由用户按同表跑 `?scene=` + 同脚本对照。
+
+---
+
+## 2026-10-19 更新：DirectionalLight2D 完成纪要
+
+**架构定稿（取代原 MRT 方案）**：单附件光照 RT，RGB=颜色累积（环境光 clear +
+点/锥光 falloff + 方向光含染色影），A=方向光 vis。接收端以 directionalLight2D
+uniform（rgb=色·强度, w=方向角）+ lightMap.a 重建法线可调制的太阳贡献
+（`rgb += dir.rgb·a·(wrap−1)`，无 normal map 时恒等）。MRT 撤销原因见
+issues 文档勘误。
+
+**高度图阴影管线**：R(lx)=该列"光到达的最远 ly"（无遮挡=+∞ 截帧顶；有遮挡=
+遮挡体上游面近边 MIN）；2048 列 R+G 16-bit 编码；NEAREST 采样；横向平滑
+min-clamp（包络不变量 R_filtered ≤ R_envelope）；ly 向过渡 edge=softness×96。
+
+**质量链验证方法（可复用）**：headless(metal) + RT A 通道扫描线 crossover 对拍
+物理理论（upstream 射线求交）；合成斜坡注入实验隔离渲染链（实测链路精确到
+亚像素）；视觉模型审图。世界→UV 映射必须含相机偏移（Canvas 布局相机在画布
+中心）。
+
+**量化地板结论**：影边互差 ~0.2°/≤0.5°（对光角）——2048 列 × 像素网格双重量化
+的架构极限，非 bug；像素级精确需换解析阴影体/逐像素 raymarch 架构（未启用）。
+
+**e2e**：spot/shadow/normal 回归通过。demo 新增键盘调光（←/→ ±1°, ↑/↓ ±0.1°）
++ 实时角度显示（DOM 键盘事件——引擎 input 新导入在坏 chunk 时序下会 undefined）。

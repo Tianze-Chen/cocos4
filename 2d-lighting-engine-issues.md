@@ -269,3 +269,39 @@ import-map 中 pal 虚拟模块别名的生成为何不一致（full 有 / cache
    quick-compiler/packer 在 custom↔builtin 切换后的行为。引擎侧修好（issues 文档
    两个问题 + 本条）后，构建验证应随 chunk 恢复正确形态而自然解锁。项目/插件侧
    无可推进项。
+
+**2026-10-19 补充：方向光开发期间新增的引擎侧证据与勘误。**
+
+## 新证据
+
+1. **编译/资产 watcher 会在一次启动内随时死亡，且无自愈**（三次实测：10-16 两次、
+   10-19 一次）。死亡后 .ts 改动不再编译、.scene 改动不再重导入（touch/改写文件均
+   无效），唯一恢复手段是重启编辑器。建议引擎侧给 packer-driver 与 asset-db 的
+   watcher 加存活检测/自动重启。
+2. **手工修补过的 chunk 可跨编辑器重启存活**：`temp/programming/.../preview/chunks`
+   下 10-16 手工补丁的 chunk（HAND-PATCHED 标记、含绝对 URL deps）在重启后仍被
+   preview 服务引用，与重编产物混用。建议重启时清理非本次构建产物（或校验哈希）。
+3. **预览 chunk 的 import 接线在特定时序下产出 undefined 符号**：demo chunk 从
+   `db://cc-2d-light/index` 导入的类（含编辑器刚导入的新组件类）曾被解析为
+   undefined，导致组件 start() 抛 "Type must be non-nil"。干净重启后自愈，但
+   复现路径未定（与 1/2 可能同源）。
+4. **动态图集对运行时构造 SpriteFrame 的兼容问题**（builtin 3.8.8 实测）：
+   `new SpriteFrame()` + 裸 Texture2D（无 ImageAsset）的精灵进
+   `DynamicAtlasManager.packToDynamicAtlas` 后，`copyTexImagesToTexture` 对该
+   frame 的图像数据执行 `texSubImage2D` 抛 Overload 错误且**每帧重试**（~120 条/s
+   控制台风暴 + 预览错误面板）。插件侧以 `frame.packable = false` 规避；引擎侧
+   可考虑对无 ImageAsset 的 frame 跳过动态图集。
+5. **误删 packer targets 目录的连带影响**：删除
+   `temp/programming/packer-driver/targets/preview`（含 import-map.json）后，
+   编辑器日志持续 ENOENT，packer 不会按页面请求自动重建该目录，需重启触发
+   全量重编。（这是我操作失误，非引擎 bug，但"目录被外部清理后无恢复路径"
+   值得引擎侧考虑。）
+
+## 勘误（10-16 记录的修正）
+
+- **"光照 RT 全灭/屏幕暗"是误诊**：当时结论"渲染管线坏了"实为探针的世界→UV
+  映射漏了相机偏移（Canvas 布局下相机在画布中心而非世界原点）+ 报错弹窗遮挡
+  画面中心两点叠加。光照管线本身自始至终正常。教训已入记忆。
+- MRT 双附件方案在本项目撤销（2D batcher 的 shader 注入不支持多渲染目标输出，
+  自定义 effect 声明双输出会使材质整体失效）——引擎若开放 2D MRT 需要同步改
+  batcher 的 shader 后处理；项目侧已改用单附件 A 通道方案，无引擎侧待办。
