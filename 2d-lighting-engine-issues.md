@@ -305,3 +305,14 @@ import-map 中 pal 虚拟模块别名的生成为何不一致（full 有 / cache
 - MRT 双附件方案在本项目撤销（2D batcher 的 shader 注入不支持多渲染目标输出，
   自定义 effect 声明双输出会使材质整体失效）——引擎若开放 2D MRT 需要同步改
   batcher 的 shader 后处理；项目侧已改用单附件 A 通道方案，无引擎侧待办。
+
+**2026-10-19 晚补充：editor 目标 chunk 的三个新数据点（均已绕过，供引擎侧参考）**
+1. editor 进程的 SystemJS chunk 依赖必须相对 **chunk 自身目录**（`../xx/hash.js`）；
+   项目修复工具曾统一写 preview 服务器的 `/scripting/x/` 绝对路径 → 编辑器整图加载失败，
+   场景组件全部报 "missing or invalid"。
+2. 经 engineMap 解析出的 `q-bundled://…` 依赖在编辑器 bridge `_instantiate` 失败
+   （populate-internal-constants 等 editor fs 内部模块）→ prerequisite-imports 中断 →
+   ScriptManager.init 失败（场景脚本系统整体不启动）。
+3. editor 目标的引擎内置脚本 chunk 同样以坏形态（CJS-in-System，`exports is not defined`）
+   产出且被执行——与 builder 复用同批 chunk 的结论互相印证：**quick-compiler 对 editor
+   目标的 emit 存在与 preview 目标相同的确定性坏块问题**。
