@@ -191,10 +191,10 @@ export class DynamicAtlasManager extends System {
 
         if (!spriteFrame.packable) return null;
 
-        // In-memory image sources (e.g. the built-in 2x2 textures) are raw pixel buffers
-        // rather than platform image objects; skip packing them entirely.
-        const image = (spriteFrame.texture as Texture2D).image;
-        if (!image || ArrayBuffer.isView(image.data)) return null;
+        // Note: textures WITHOUT an image source (e.g. created storage) still
+        // pack — drawTextureAt skips the draw for null images while the frame
+        // records into the atlas (upstream pack contract, see auto-atlas tests).
+        // Buffer-backed images pack via atlas.ts copyBuffersToTexture routing.
 
         // hack for pixel game,should pack to different sampler atlas
         const sampler = spriteFrame.texture.getSamplerInfo();
