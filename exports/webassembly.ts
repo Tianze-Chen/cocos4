@@ -22,7 +22,7 @@
  THE SOFTWARE.
 */
 
-import { instantiateWasm, fetchBuffer, fetchUrl, ensureWasmModuleReady } from 'pal/wasm';
+import { instantiateWasm, fetchBuffer, fetchUrl, ensureWasmModuleReady } from '../pal/wasm/wasm-web';
 
 /**
  * @en
