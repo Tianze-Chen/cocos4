@@ -316,3 +316,21 @@ import-map 中 pal 虚拟模块别名的生成为何不一致（full 有 / cache
 3. editor 目标的引擎内置脚本 chunk 同样以坏形态（CJS-in-System，`exports is not defined`）
    产出且被执行——与 builder 复用同批 chunk 的结论互相印证：**quick-compiler 对 editor
    目标的 emit 存在与 preview 目标相同的确定性坏块问题**。
+
+
+## JSB 原生端现状调查(2026-10-27, 代码级审查, 未真机验证)
+
+**核心结论: 自定义材质链路在原生 2D batcher 上结构是通的**——
+`DrawBatch2D::fillPass` → `Pass::initPassFromTarget` 中 `_descriptorSet = target->_descriptorSet`(共享):
+TS 侧 `pass.setUniform`/`bindTexture` 写入的 uniform 块与采样器绑定直达原生批次,
+灯 quad(自定义材质 Sprite)理论上按材质哈希正常合批渲染。
+
+待真机验证的两个风险点:
+1. **RT 采样 Y 翻转**(既有备注): vScreenUV = clip.xy/w*0.5+0.5 的推导在 WebGL 正确,
+   Metal/Vulkan 的 render-to-texture 可能 V 反(接收端光照上下镜像)。修复方向:
+   效果里加后端 define 分支翻转 V, 或改 gl_FragCoord 推导(需真机对拍后定)。
+2. **RGBA16F 光照 RT**: Metal/Vulkan 原生支持该格式, 但引擎 RT passInfo 的
+   格式覆写路径在原生构建管线下是否生效待验(不生效则回退 RGBA8, 光照仍正确仅截断)。
+
+插件侧已就位: 原生构建检测 → 一次性警告 + 灯根失活(不崩不黑)。
+真机验证清单: Mac 构建(最快) → 灯渲染/Y 方向/RT 格式/性能四项对拍。
